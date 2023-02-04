@@ -9,16 +9,6 @@ on:
       force_version:
         type: boolean
         description: Force update version
-  schedule:
-    - cron: '0 18 * * *'
-  push:
-    branches: [ master ]
-    paths-ignore:
-    - '**/*.md'
-  pull_request:
-    branches: [ master ]
-    paths-ignore:
-    - '**/*.md'
 
 env:
   APP_NAME: VSCodium
@@ -26,7 +16,6 @@ env:
   OS_NAME: windows
   VERSIONS_REPOSITORY: ${{ github.repository_owner }}/versions
   VSCODE_QUALITY: stable
-
 
 jobs:
   build:
@@ -41,8 +30,6 @@ jobs:
       matrix:
         vscode_arch:
           - x64
-          - ia32
-          - arm64
     outputs:
       RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
       SHOULD_DEPLOY: ${{ env.SHOULD_DEPLOY }}
@@ -61,7 +48,7 @@ jobs:
       - name: Setup Python 3
         uses: actions/setup-python@v3
         with:
-          python-version: '3.x'
+          python-version: "3.x"
 
       - name: Clone VSCode repo
         run: ./get_repo.sh
@@ -100,32 +87,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.STRONGER_GITHUB_TOKEN }}
           GITHUB_USERNAME: ${{ github.repository_owner }}
         run: ./update_version.sh
-        if: env.SHOULD_DEPLOY == 'yes'
-
-  winget:
-    needs: build
-    runs-on: windows-latest
-    defaults:
-      run:
-        shell: bash
-    env:
-      APP_IDENTIFIER: VSCodium.VSCodium
-    if: needs.build.outputs.SHOULD_DEPLOY == 'yes'
-
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Check version
-        run: ./stores/winget/check_version.sh
-        env:
-          RELEASE_VERSION: ${{ needs.build.outputs.RELEASE_VERSION }}
-
-      - name: Release to WinGet
-        uses: vedantmgoyal2009/winget-releaser@v1
-        with:
-          identifier: ${{ env.APP_IDENTIFIER }}
-          version: ${{ env.RELEASE_VERSION }}
-          release-tag: ${{ env.RELEASE_VERSION }}
-          installers-regex: '\.exe$' # only .exe files
-          token: ${{ secrets.STRONGER_GITHUB_TOKEN }}
         if: env.SHOULD_DEPLOY == 'yes'
