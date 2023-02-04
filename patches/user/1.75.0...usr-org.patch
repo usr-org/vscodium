@@ -1,0 +1,96 @@
+diff --git a/src/vs/base/parts/quickinput/browser/quickInput.ts b/src/vs/base/parts/quickinput/browser/quickInput.ts
+index 0ca65b8e40db3..80924b5c661ef 100644
+--- a/src/vs/base/parts/quickinput/browser/quickInput.ts
++++ b/src/vs/base/parts/quickinput/browser/quickInput.ts
+@@ -39,6 +39,8 @@ export interface IQuickInputOptions {
+ 	idPrefix: string;
+ 	container: HTMLElement;
+ 	ignoreFocusOut(): boolean;
++	maximumWidth(): number;
++	relativeWidth(): number;
+ 	isScreenReaderOptimized(): boolean;
+ 	backKeybindingLabel(): string | undefined;
+ 	setContextKey(id?: string): void;
+@@ -1215,7 +1217,7 @@ class InputBox extends QuickInput implements IInputBox {
+ }
+ 
+ export class QuickInputController extends Disposable {
+-	private static readonly MAX_WIDTH = 600; // Max total width of quick input widget
++	//private static readonly MAX_WIDTH = 600; // Max total width of quick input widget
+ 
+ 	private idPrefix: string;
+ 	private ui: QuickInputUI | undefined;
+@@ -1813,7 +1815,8 @@ export class QuickInputController extends Disposable {
+ 			this.ui.container.style.top = `${this.titleBarOffset}px`;
+ 
+ 			const style = this.ui.container.style;
+-			const width = Math.min(this.dimension!.width * 0.62 /* golden cut */, QuickInputController.MAX_WIDTH);
++			//const width = Math.min(this.dimension!.width * 0.62 /* golden cut */, QuickInputController.MAX_WIDTH);
++			const width = Math.min(this.dimension!.width * this.options.relativeWidth(), this.options.maximumWidth());
+ 			style.width = width + 'px';
+ 
+ 			this.ui.inputBox.layout();
+diff --git a/src/vs/base/parts/quickinput/test/browser/quickinput.test.ts b/src/vs/base/parts/quickinput/test/browser/quickinput.test.ts
+index 39c536460fa49..573352967e941 100644
+--- a/src/vs/base/parts/quickinput/test/browser/quickinput.test.ts
++++ b/src/vs/base/parts/quickinput/test/browser/quickinput.test.ts
+@@ -44,6 +44,8 @@ suite('QuickInput', () => { // https://github.com/microsoft/vscode/issues/147543
+ 			container: fixture,
+ 			idPrefix: 'testQuickInput',
+ 			ignoreFocusOut() { return true; },
++			maximumWidth() { return 600; },
++			relativeWidth() { return 0.62; },
+ 			isScreenReaderOptimized() { return false; },
+ 			returnFocus() { },
+ 			backKeybindingLabel() { return undefined; },
+diff --git a/src/vs/platform/quickinput/browser/quickInput.ts b/src/vs/platform/quickinput/browser/quickInput.ts
+index b318044c2f696..a9d85b1a377a2 100644
+--- a/src/vs/platform/quickinput/browser/quickInput.ts
++++ b/src/vs/platform/quickinput/browser/quickInput.ts
+@@ -71,6 +71,8 @@ export class QuickInputService extends Themable implements IQuickInputService {
+ 			idPrefix: 'quickInput_', // Constant since there is still only one.
+ 			container: host.container,
+ 			ignoreFocusOut: () => false,
++			maximumWidth: () => 600,
++			relativeWidth: () => 0.62,
+ 			isScreenReaderOptimized: () => this.accessibilityService.isScreenReaderOptimized(),
+ 			backKeybindingLabel: () => undefined,
+ 			setContextKey: (id?: string) => this.setContextKey(id),
+diff --git a/src/vs/workbench/browser/workbench.contribution.ts b/src/vs/workbench/browser/workbench.contribution.ts
+index 4ea06cce5ed9b..97c4dd5bf8ea1 100644
+--- a/src/vs/workbench/browser/workbench.contribution.ts
++++ b/src/vs/workbench/browser/workbench.contribution.ts
+@@ -348,6 +348,20 @@ const registry = Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Con
+ 				'description': localize('workbench.quickOpen.preserveInput', "Controls whether the last typed input to Quick Open should be restored when opening it the next time."),
+ 				'default': false
+ 			},
++			'workbench.quickOpen.maximumWidth': {
++				'type': 'number',
++				'description': localize('workbench.quickOpen.maxWidth', "Limits the maximum width of the quick open widget to the specified number of pixels."),
++				'default': 600,
++				'minimum': 200,
++				'maximum': 2000
++			},
++			'workbench.quickOpen.relativeWidth': {
++				'type': 'number',
++				'description': localize('workbench.quickOpen.relativeWidth', "Controls the width of the quick open widget relative to the total window width."),
++				'default': 0.62,
++				'minimum': 0.1,
++				'maximum': 1.0
++			},
+ 			'workbench.settings.openDefaultSettings': {
+ 				'type': 'boolean',
+ 				'description': localize('openDefaultSettings', "Controls whether opening settings also opens an editor showing all default settings."),
+diff --git a/src/vs/workbench/services/quickinput/browser/quickInputService.ts b/src/vs/workbench/services/quickinput/browser/quickInputService.ts
+index 34572df63e0f1..1779bb11f36b5 100644
+--- a/src/vs/workbench/services/quickinput/browser/quickInputService.ts
++++ b/src/vs/workbench/services/quickinput/browser/quickInputService.ts
+@@ -41,6 +41,8 @@ export class QuickInputService extends BaseQuickInputService {
+ 
+ 	protected override createController(): QuickInputController {
+ 		return super.createController(this.layoutService, {
++			maximumWidth: () => this.configurationService.getValue('workbench.quickOpen.maximumWidth'),
++			relativeWidth: () => this.configurationService.getValue('workbench.quickOpen.relativeWidth'),
+ 			ignoreFocusOut: () => !this.configurationService.getValue('workbench.quickOpen.closeOnFocusLost'),
+ 			backKeybindingLabel: () => this.keybindingService.lookupKeybinding('workbench.action.quickInputBack')?.getLabel() || undefined
+ 		});

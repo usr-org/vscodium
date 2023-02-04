@@ -6,6 +6,7 @@ on:
       new_release:
         type: boolean
         description: Force new Release
+        default: true
       force_version:
         type: boolean
         description: Force update version
@@ -25,6 +26,10 @@ jobs:
         shell: bash
     env:
       VSCODE_ARCH: ${{ matrix.vscode_arch }}
+      # - get_repo.sh
+      RELEASE_VERSION: 1.75.0.23035
+      MS_TAG: 1.75.0
+      MS_COMMIT: e2816fe719a4026ffa1ee0189dc89bdfdbafb164
     strategy:
       fail-fast: false
       matrix:
