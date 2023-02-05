@@ -1,0 +1,197 @@
+name: stable-linux
+
+on:
+  workflow_dispatch:
+    inputs:
+      new_release:
+        type: boolean
+        description: Force new Release
+        default: true
+      force_version:
+        type: boolean
+        description: Force update version
+
+env:
+  APP_NAME: VSCodium
+  ASSETS_REPOSITORY: ${{ github.repository }}
+  OS_NAME: linux
+  VERSIONS_REPOSITORY: ${{ github.repository_owner }}/versions
+  VSCODE_QUALITY: stable
+  #
+  #
+  #
+  # - get_repo.sh
+  #
+  # - https://github.com/VSCodium/vscodium/releases
+  #   - must match, for the use of the vscodium server
+  RELEASE_VERSION: 1.75.0.23033
+  #
+  MS_TAG: 1.75.0
+  MS_COMMIT: e2816fe719a4026ffa1ee0189dc89bdfdbafb164
+  #
+  #
+  #
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    container:
+      image: vscodium/vscodium-linux-build-agent:bionic-x64
+    outputs:
+      MS_COMMIT: ${{ env.MS_COMMIT }}
+      MS_TAG: ${{ env.MS_TAG }}
+      RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
+      SHOULD_BUILD: ${{ env.SHOULD_BUILD }}
+      SHOULD_DEPLOY: ${{ env.SHOULD_DEPLOY }}
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ env.GITHUB_BRANCH }}
+
+      - name: Clone VSCode repo
+        run: ./get_repo.sh
+
+      - name: Check PR or cron
+        run: ./check_cron_or_pr.sh
+
+  dependencies:
+    needs:
+      - check
+    runs-on: ubuntu-latest
+    env:
+      MS_COMMIT: ${{ needs.check.outputs.MS_COMMIT }}
+      MS_TAG: ${{ needs.check.outputs.MS_TAG }}
+      RELEASE_VERSION: ${{ needs.check.outputs.RELEASE_VERSION }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - vscode_arch: x64
+            image: vscodium/vscodium-linux-build-agent:centos7-devtoolset8-x64
+        # - vscode_arch: arm64
+        #   image: vscodium/vscodium-linux-build-agent:bionic-x64
+    container:
+      image: ${{ matrix.image }}
+    if: needs.check.outputs.SHOULD_BUILD == 'yes' || needs.check.outputs.SHOULD_DEPLOY == 'yes'
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ env.GITHUB_BRANCH }}
+
+      - name: Clone VSCode repo
+        run: ./get_repo.sh
+
+      - uses: docker/setup-qemu-action@v2
+        if: matrix.vscode_arch == 'arm64'
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v3
+        with:
+          node-version: 16
+
+      - name: Install Yarn
+        run: npm install -g yarn
+
+      - name: Install remote dependencies (x64)
+        env:
+          npm_config_arch: x64
+        run: ./install_remote_dependencies.sh
+        if: matrix.vscode_arch == 'x64'
+
+      # - name: Install remote dependencies (arm64)
+      #   run: |
+      #     set -e
+      #     docker run -e VSCODE_QUALITY -e GITHUB_TOKEN -v $(pwd):/root/vscodium vscodium/vscodium-linux-build-agent:centos7-devtoolset8-arm64 /root/vscodium/install_remote_dependencies.sh
+      #   if: matrix.vscode_arch == 'arm64'
+
+      - name: Save remote dependencies
+        uses: actions/upload-artifact@v3
+        with:
+          name: remote-dependencies-${{ matrix.vscode_arch }}
+          path: ./remote-dependencies.tar
+          retention-days: ${{ needs.check.outputs.SHOULD_DEPLOY == 'yes' && 30 || 1 }}
+
+  build:
+    needs:
+      - check
+      - dependencies
+    runs-on: ubuntu-latest
+    env:
+      MS_COMMIT: ${{ needs.check.outputs.MS_COMMIT }}
+      MS_TAG: ${{ needs.check.outputs.MS_TAG }}
+      RELEASE_VERSION: ${{ needs.check.outputs.RELEASE_VERSION }}
+      SHOULD_BUILD: ${{ needs.check.outputs.SHOULD_BUILD }}
+      SHOULD_DEPLOY: ${{ needs.check.outputs.SHOULD_DEPLOY }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - vscode_arch: x64
+            npm_arch: x64
+            image: vscodium/vscodium-linux-build-agent:bionic-x64
+    container:
+      image: ${{ matrix.image }}
+      env:
+        VSCODE_ARCH: ${{ matrix.vscode_arch }}
+    outputs:
+      RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
+      SHOULD_BUILD: ${{ env.SHOULD_BUILD }}
+      SHOULD_DEPLOY: ${{ env.SHOULD_DEPLOY }}
+    if: needs.check.outputs.SHOULD_BUILD == 'yes' || needs.check.outputs.SHOULD_DEPLOY == 'yes'
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Clone VSCode repo
+        run: ./get_repo.sh
+
+      - name: Install GH
+        run: ./install_gh.sh
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v3
+        with:
+          node-version: 16
+
+      - name: Install Yarn
+        run: npm install -g yarn
+
+      - name: Check existing VSCodium tags/releases
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEW_RELEASE: ${{ github.event.inputs.new_release }}
+        run: ./check_tags.sh
+        if: env.SHOULD_DEPLOY == 'yes'
+
+      - name: Restore remote dependencies
+        uses: actions/download-artifact@v3
+        with:
+          name: remote-dependencies-${{ matrix.vscode_arch }}
+        if: env.SHOULD_BUILD == 'yes' && matrix.vscode_arch == 'x64'
+
+      - name: Build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          npm_config_arch: ${{ matrix.npm_arch }}
+        run: ./build.sh
+        if: env.SHOULD_BUILD == 'yes'
+
+      - name: Prepare assets
+        run: ./prepare_assets.sh
+        if: env.SHOULD_BUILD == 'yes' && env.SHOULD_DEPLOY == 'yes'
+
+      - name: Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./release.sh
+        if: env.SHOULD_BUILD == 'yes' && env.SHOULD_DEPLOY == 'yes'
+
+      - name: Update versions repo
+        env:
+          FORCE_UPDATE: ${{ github.event.inputs.force_version }}
+          GITHUB_TOKEN: ${{ secrets.STRONGER_GITHUB_TOKEN }}
+          GITHUB_USERNAME: ${{ github.repository_owner }}
+        run: ./update_version.sh
+        if: env.SHOULD_DEPLOY == 'yes'

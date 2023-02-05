@@ -17,6 +17,20 @@ env:
   OS_NAME: windows
   VERSIONS_REPOSITORY: ${{ github.repository_owner }}/versions
   VSCODE_QUALITY: stable
+  #
+  #
+  #
+  # - get_repo.sh
+  #
+  # - https://github.com/VSCodium/vscodium/releases
+  #   - must match, for the use of the vscodium server
+  RELEASE_VERSION: 1.75.0.23033
+  #
+  MS_TAG: 1.75.0
+  MS_COMMIT: e2816fe719a4026ffa1ee0189dc89bdfdbafb164
+  #
+  #
+  #
 
 jobs:
   build:
@@ -26,10 +40,9 @@ jobs:
         shell: bash
     env:
       VSCODE_ARCH: ${{ matrix.vscode_arch }}
-      # - get_repo.sh
-      RELEASE_VERSION: 1.75.0.23035
-      MS_TAG: 1.75.0
-      MS_COMMIT: e2816fe719a4026ffa1ee0189dc89bdfdbafb164
+      RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
+      MS_TAG: ${{ env.MS_TAG }}
+      MS_COMMIT: ${{ env.MS_COMMIT }}
     strategy:
       fail-fast: false
       matrix:
