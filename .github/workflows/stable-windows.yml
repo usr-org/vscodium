@@ -40,9 +40,9 @@ jobs:
         shell: bash
     env:
       VSCODE_ARCH: ${{ matrix.vscode_arch }}
-      RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
-      MS_TAG: ${{ env.MS_TAG }}
-      MS_COMMIT: ${{ env.MS_COMMIT }}
+      RELEASE_VERSION: 1.75.0.23033
+      MS_TAG: 1.75.0
+      MS_COMMIT: e2816fe719a4026ffa1ee0189dc89bdfdbafb164
     strategy:
       fail-fast: false
       matrix:
